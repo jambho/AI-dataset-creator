@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrin Data Collection</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+        .screen {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .hidden {
+            display: none;
+        }
+        h1, h2 {
+            color: #2c3e50;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button.secondary {
+            background-color: #95a5a6;
+        }
+        button.secondary:hover {
+            background-color: #7f8c8d;
+        }
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            margin-bottom: 15px;
+            resize: vertical;
+            min-height: 100px;
+        }
+        .progress-container {
+            background-color: #ecf0f1;
+            border-radius: 5px;
+            margin: 20px 0;
+            height: 20px;
+        }
+        #progress-bar {
+            background-color: #2ecc71;
+            height: 100%;
+            border-radius: 5px;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            background: #27ae60;
+            color: white;
+            border-radius: 5px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+        .notification.show {
+            opacity: 1;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .stat-item {
+            background-color: #f8f9fa;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .key-hint {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="setup-screen" class="screen">
+        <h1>AI Training Questionnaire</h1>
+        <p>This questionnaire will help create a training dataset for an AI model. Your responses will be saved to a file after each answer.</p>
+        <button onclick="startQuestionnaire()">Start Questionnaire</button>
+    </div>
+
+    <div id="question-screen" class="screen hidden">
+        <h2>Question <span id="question-number"></span></h2>
+        <div class="progress-container">
+            <div id="progress-bar"></div>
+        </div>
+        <div class="stats">
+            <div class="stat-item" id="progress-text">Progress: 0%</div>
+            <div class="stat-item" id="answered-text">Answered: 0</div>
+        </div>
+        <h3 id="current-question"></h3>
+        <textarea id="answer-input" placeholder="Type your answer here..."></textarea>
+        <div>
+            <button onclick="saveAnswer()">Save Answer</button>
+            <button onclick="skipQuestion()" class="secondary">Skip Question</button>
+        </div>
+        <div class="key-hint">Tip: Press Ctrl+Enter to save your answer and move to the next question</div>
+    </div>
+
+    <div id="completed-screen" class="screen hidden">
+        <h2>Questionnaire Completed!</h2>
+        <p>You've answered all the questions. You can download the complete dataset or continue editing your answers.</p>
+        <button onclick="downloadDataset()">Download Dataset</button>
+        <button onclick="editAnswers()" class="secondary">Edit Answers</button>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script>
+        let questions = [];
+        let answers = {};
+        let currentQuestionIndex = 0;
+        let questionsLoaded = false;
+        let fileHandle = null;
+        
+        const embeddedQuestionsList = [
+        "What's your all-time favorite hip-hop album and why?",
+        "Describe your perfect video game day.",
+        "What's a life philosophy you try to live by?",
+        "What's the hardest FromSoftware boss you've ever beaten?",
+        "If you could have a rap battle with any historical figure, who would it be?",
+        "What's something you're deeply passionate about that others might find surprising?",
+        "What's a game that truly immersed you in its world?",
+        "What does the term \"success\" mean to you?",
+        "Who's a hip-hop artist you think is criminally underrated?",
+        "What's your favorite gaming genre and why?",
+        "How do you deal with failure or disappointment?",
+        "What's the best hip-hop collaboration track you've ever heard?",
+        "Do you prefer playing games for the story, the challenge, or the gameplay mechanics?",
+        "What's a piece of advice you'd give your younger self?",
+        "East Coast or West Coast hip-hop? Defend your choice.",
+        "What's a video game soundtrack you still listen to outside of the game?",
+        "What is the most important quality in a friend?",
+        "What makes a rap verse truly great, in your opinion?",
+        "What's the most satisfying \"click\" moment you've had in a difficult game?",
+        "How do you define happiness?",
+        "If you could be featured on a track with any rapper, living or dead, who would it be?",
+        "What's a game you love that everyone else seems to hate, or vice versa?",
+        "What is something you've changed your mind about in the last few years?",
+        "What's the best concert or live hip-hop performance you've ever seen?",
+        "What's a gaming mechanic you think is underutilized?",
+        "What are you curious about right now?",
+        "Who has the best flow in hip-hop, in your opinion?",
+        "What's the most memorable \"first play\" experience you've had with a game?",
+        "What is something everyone should try at least once in their life?",
+        "What's a hip-hop lyric that has always stuck with you?",
+        "What game have you sunk the most hours into? Was it worth it?",
+        "What does \"being true to yourself\" mean to you?",
+        "What's the best diss track of all time?",
+        "What's a game that genuinely scared you or made you feel dread?",
+        "What is a fear you've overcome?",
+        "If you could add one rapper as a character to a video game, who and in which game?",
+        "What's the most overrated video game you can think of?",
+        "What is something you are unapologetic about?",
+        "What era of hip-hop do you vibe with the most?",
+        "What's a game with a narrative that truly impacted you?",
+        "How do you stay motivated when you're feeling stuck?",
+        "What's a classic hip-hop album everyone should listen to at least once?",
+        "What's your favorite type of video game boss fight?",
+        "What is the role of art in society?",
+        "Who would you put in your hip-hop Mount Rushmore?",
+        "What's a game that you're still hoping gets a sequel?",
+        "What is a simple pleasure you never get tired of?",
+        "What's the best video game based on a movie, or vice versa?",
+        "How important is it to \"keep it real\"?",
+        "What's a hidden gem indie game you think more people should play?",
+        "What does it mean to live a good life?",
+        "What's the best beat you've ever heard?",
+        "What's a game that made you better at problem-solving in real life?",
+        "What is a tradition you value?",
+        "If you could sample any non-musical sound for a hip-hop beat, what would it be?",
+        "What's the most frustratingly difficult game you've ever loved?",
+        "What is something you've learned from a different culture?",
+        "What's a hip-hop related documentary or movie you'd recommend?",
+        "Do you prefer games that hold your hand or throw you into the deep end?",
+        "What is a skill you're currently trying to develop?",
+        "What makes a hip-hop producer distinctive?",
+        "What's a game with a community you really enjoyed being a part of?",
+        "What is the biggest misconception people have about you?",
+        "What's a rap album you consider a perfect 10/10?",
+        "What's a video game world you would want to live in for a week?",
+        "What does \"strength\" mean to you?",
+        "Who had the best guest verse on a track this past year?",
+        "What's the most innovative game you've played in the last five years?",
+        "How do you define \"home\"?",
+        "What's a hip-hop trend you wish would come back?",
+        "What's a game you love to watch other people play?",
+        "What is the best way to handle criticism?",
+        "What's the best use of a feature from one artist on another's track?",
+        "What's a game that completely subverted your expectations?",
+        "What is something you are grateful for today?",
+        "If you could create a hip-hop supergroup of any artists, who would be in it?",
+        "What's a video game enemy type you absolutely despise?",
+        "What is a cause you care deeply about?",
+        "What's a hip-hop fashion trend you rocked (or still rock)?",
+        "What's a game that made you cry?",
+        "What is the most valuable lesson you learned from a family member?",
+        "What's the best hip-hop bio or autobiography you've read?",
+        "What's your favorite video game weapon or tool?",
+        "How do you practice self-care?",
+        "What's a one-hit wonder in hip-hop that you actually love?",
+        "What's a game you're embarrassingly bad at but still enjoy?",
+        "What does \"freedom\" mean to you?",
+        "What's the most clever wordplay or pun you've heard in a rap?",
+        "What's a video game side quest that was better than the main story?",
+        "What is a book that changed your perspective on something?",
+        "Who is the greatest hip-hop storyteller?",
+        "What's a game that has a fantastic New Game+ mode?",
+        "What is a habit you're trying to break?",
+        "What's a hip-hop podcast you enjoy?",
+        "What's a video game you'd love to see remade or remastered?",
+        "What is your approach to making a big decision?",
+        "What's the best album intro track in hip-hop?",
+        "What's a game with a combat system you couldn't get enough of?",
+        "What is the most important thing you look for in a partner?",
+        "What's a hip-hop controversy you still think about?",
+        "What's a game that has amazing environmental storytelling?",
+        "How do you want to be remembered?",
+        "What's a rap song that always puts you in a good mood?",
+        "What's the most beautiful video game environment you've ever explored?",
+        "What is a risk that paid off for you?",
+        "What's the best hip-hop hook of all time?",
+        "What's a game that requires pure skill over grinding or levels?",
+        "What is something you find beautiful that others might overlook?",
+        "What's a hip-hop duo that has never made a bad song?",
+        "What's a video game you can always go back to and have fun with?",
+        "What does \"legacy\" mean to you?",
+        "What's the most influential hip-hop album of all time?",
+        "What's a game that everyone should play at least once?",
+        "What is the best piece of advice you've ever received?",
+        "What's a current hip-hop artist who is pushing the genre forward?",
+        "What's a video game achievement or trophy you're really proud of?",
+        "How do you define \"community\"?",
+        "What's a sample in a hip-hop song that made you go discover the original?",
+        "What's a game with a fantastic opening sequence?",
+        "What is a skill you think everyone should learn?",
+        "What's the best hip-hop verse from a non-rapper?",
+        "What's a video game with a morality system that actually felt meaningful?",
+        "What is something you've had to unlearn?",
+        "What's a hip-hop song that tells a complete story in under four minutes?",
+        "What's a game that is objectively flawed but you love it anyway?",
+        "What is your personal definition of \"peace\"?",
+        "What's the best hip-hop documentary you've ever seen?",
+        "What's a video game character you relate to on a deep level?",
+        "How do you practice gratitude?",
+        "What's a hip-hop lyric that you find yourself randomly quoting?",
+        "What's a game that has an incredible modding community?",
+        "What is a small act of kindness you'll never forget?",
+        "What's the best hip-hop love song?",
+        "What's a video game that is a perfect \"comfort food\" game for you?",
+        "What does \"growth\" mean to you?",
+        "What's a hip-hop artist with a flawless discography?",
+        "What's a game that you've replayed more than three times?",
+        "What is the most important lesson you've learned about money?",
+        "What's the best diss track of the last decade?",
+        "What's a video game that has amazing sound design?",
+        "How do you recharge when you're feeling drained?",
+        "What's a hip-hop album that is a perfect front-to-back listen?",
+        "What's a game that has a unique art style you adore?",
+        "What is a boundary you've set that improved your life?",
+        "What's the most underrated hip-hop instrumentals?",
+        "What's a video game that taught you something about history, science, or culture?",
+        "What is a quote you try to live by?",
+        "What's a hip-hop song that samples a video game soundtrack?",
+        "What's a game that has an endless amount of replayability for you?",
+        "What does \"justice\" mean to you?",
+        "Who is the king of punchlines in hip-hop?",
+        "What's a video game that has a fantastic photo mode?",
+        "What is a project you're currently excited about?",
+        "What's the best hip-hop posse cut (song with 4+ rappers)?",
+        "What's a game that has a deep lore you love diving into?",
+        "How do you handle change?",
+        "What's a hip-hop song that gets you hyped every single time?",
+        "What's a video game that is better with friends?",
+        "What is a memory you often revisit?",
+        "What's the best concept album in hip-hop?",
+        "What's a game that has a satisfying progression system?",
+        "What is something you're optimistic about for the future?",
+        "What's a hip-hop producer who has a instantly recognizable sound?",
+        "What's a video game that is a technical marvel?",
+        "How do you define \"wisdom\"?",
+        "What's a hip-hop song that is a perfect time capsule of its era?",
+        "What's a game that you think is a masterpiece of game design?",
+        "What is a question you wish people asked you more often?",
+        "What is your earliest memory?",
+        "What's a family tradition you loved as a child?",
+        "What's a family tradition you've created or want to create?",
+        "What did you want to be when you grew up?",
+        "What's a smell that instantly brings back a memory?",
+        "What was your biggest childhood fear?",
+        "What was your favorite childhood meal?",
+        "What's the best piece of advice your parents ever gave you?",
+        "What's a lesson you learned the hard way?",
+        "What's a skill you learned out of necessity?",
+        "What does your perfect morning look like?",
+        "What does your perfect night look like?",
+        "What's a small daily ritual you couldn't live without?",
+        "What's a bad habit you're trying to break?",
+        "What's a good habit you're proud of building?",
+        "How do you handle stress?",
+        "What's your go-to method for cheering yourself up?",
+        "What's your love language (words, acts, gifts, time, touch)?",
+        "How do you prefer to receive appreciation or praise?",
+        "What's a boundary you've learned to set?",
+        "What does \"self-care\" mean to you, specifically?",
+        "What's a form of self-care you find overrated?",
+        "What's a form of self-care you find underrated?",
+        "What's something you're deeply proud of, but rarely get to talk about?",
+        "What's a misconception people often have about you at first glance?",
+        "What's a personality trait you inherited from a parent?",
+        "What's a personality trait you hope you *didn't* inherit?",
+        "What's something you believed as a child that you now know is silly?",
+        "What's a random fact you know that is utterly useless but interesting?",
+        "What's a historical period you'd love to time-travel to and why?",
+        "If you could have dinner with any three people, living or dead, who would they be?",
+        "If you could instantly become an expert in something, what would it be?",
+        "What's a problem in the world you wish you could solve?",
+        "What's a cause or charity you strongly support?",
+        "What does your personal \"hell\" look like? (e.g., endless traffic, small talk, etc.)",
+        "What does your personal \"heaven\" look like?",
+        "What's a guilty pleasure you have no guilt about?",
+        "What's a movie you could watch a hundred times?",
+        "What's a book that fundamentally changed your perspective?",
+        "What's a song that feels like it was written for you?",
+        "What's a piece of art that moves you?",
+        "What's the best live performance (music, theater, etc.) you've ever seen?",
+        "What's the best gift you've ever received?",
+        "What's the best gift you've ever given?",
+        "What's a talent you wish you had?",
+        "What's a talent you have that surprises people?",
+        "What's your most controversial food opinion?",
+        "What's a food you hated as a child but love now?",
+        "What's a food you loved as a child but hate now?",
+        "What's your favorite meal to cook for others?",
+        "What's your comfort food?",
+        "What's the most adventurous thing you've ever eaten?",
+        "What's a simple pleasure you never get tired of?",
+        "What's the best cup of coffee or tea you've ever had?",
+        "What's your favorite season and why?",
+        "What's your favorite type of weather?",
+        "Beach, mountains, or forest?",
+        "What's a place that feels like home, even if it isn't?",
+        "What's the most beautiful place you've ever seen?",
+        "What's a trip that changed you?",
+        "What's a travel destination that's been ruined by tourism?",
+        "What's a travel destination that's underrated?",
+        "What's the worst travel experience you've ever had?",
+        "What's a language you wish you could speak fluently?",
+        "What's a cultural norm from another country you wish we adopted?",
+        "What's a cultural norm from our country you wish we'd drop?",
+        "What's a hill you're willing to die on? (What's a trivial opinion you'll defend fiercely?)",
+        "What's a popular trend you just don't understand?",
+        "What's something you're oddly passionate about?",
+        "What's a conspiracy theory you find entertaining (even if you don't believe it)?",
+        "What's a scientific discovery that blows your mind?",
+        "What's a question you don't know the answer to, but think about often?",
+        "What's a paradox that breaks your brain?",
+        "Do you think humans are fundamentally good, bad, or something else?",
+        "What do you think happens after we die?",
+        "What's a belief you hold that isn't based on logic or evidence?",
+        "What's something you've changed your mind about recently?",
+        "What's a topic you could talk about for an hour without preparation?",
+        "What's a topic you know nothing about but find fascinating?",
+        "What's a subject you wish was taught in schools?",
+        "What's the most valuable class you ever took?",
+        "What's the most useless class you ever took?",
+        "Who was your most influential teacher or mentor?",
+        "What's a professional failure that led to a better opportunity?",
+        "What's a professional success that felt hollow?",
+        "What does \"work-life balance\" mean to you?",
+        "What's your attitude towards money?",
+        "What's the best financial decision you ever made?",
+        "What's the worst financial decision you ever made?",
+        "What's something you're happily frugal about?",
+        "What's something you're happily extravagant about?",
+        "What's a purchase that significantly improved your life?",
+        "What's a possession you would save first in a fire?",
+        "What's a possession that is worthless to others but priceless to you?",
+        "What's a modern convenience you couldn't live without?",
+        "What's a modern technology you think does more harm than good?",
+        "What's an old piece of technology you miss?",
+        "How do you stay informed about the world?",
+        "What's a news source you trust?",
+        "How do you deal with information overload?",
+        "What's a social media platform you love?",
+        "What's a social media platform you hate?",
+        "Do you think social media is a net positive or negative for society?",
+        "What's your favorite way to disconnect from technology?",
+        "What's a hobby you had as a kid that you'd like to pick up again?",
+        "What's a hobby you've always wanted to try?",
+        "What's a hobby you tried and were terrible at?",
+        "What's a sport you enjoy playing?",
+        "What's a sport you enjoy watching?",
+        "Who is an athlete you admire?",
+        "What's a random act of kindness you witnessed that stuck with you?",
+        "What's a random act of kindness you received that you'll never forget?",
+        "What's a small thing someone can do to make the world a better place?",
+        "What does \"community\" mean to you?",
+        "How important are your friends to your sense of self?",
+        "What's a quality you value most in a friend?",
+        "What's a quality you value most in a partner?",
+        "What's a deal-breaker in any relationship?",
+        "What's the most important lesson you've learned about love?",
+        "What's the most important lesson you've learned about friendship?",
+        "What's a relationship (romantic or platonic) that taught you a lot about yourself?",
+        "What's a piece of relationship advice you'd give others?",
+        "How do you handle conflict?",
+        "How do you apologize?",
+        "How do you forgive?",
+        "What's a lie you tell yourself?",
+        "What's a truth about yourself you try to avoid?",
+        "What's a part of your personality you're trying to improve?",
+        "What's a part of your personality you hope never changes?",
+        "What's a fear you're currently facing?",
+        "What's a dream you've let go of?",
+        "What's a dream you're still holding onto?",
+        "What's a recent small victory you celebrated?",
+        "What are you looking forward to in the next week?",
+        "What are you looking forward to in the next year?",
+        "What are you looking forward to in the next decade?",
+        "What does \"getting older\" mean to you?",
+        "What's a piece of aging advice you've received?",
+        "What's a worry you have about the future?",
+        "What's a hope you have for the future?",
+        "If you knew the world was ending in 24 hours, what would you do?",
+        "If you could guarantee one thing for your future self, what would it be?",
+        "If you could send a message to your future self, what would it say?",
+        "If you could send a message to your past self, what would it say?",
+        "What does \"legacy\" mean to you on a personal level?",
+        "How do you want to be remembered by your friends?",
+        "How do you want to be remembered by your family?",
+        "What's a story your family always tells about you?",
+        "What's a nickname you've had and what's the story behind it?",
+        "What's a joke you find hilarious that no one else seems to get?",
+        "What's your favorite type of humor?",
+        "What's something that always makes you laugh?",
+        "What's the funniest thing that's ever happened to you?",
+        "What's an embarrassing story you can laugh about now?",
+        "What's a piece of wisdom you would pass on to the next generation?",
+        "What do you think is the meaning of life?",
+        "What is your purpose right now?",
+        "What makes life worth living?",
+        "What's a sound you find deeply calming?",
+        "What's a sound you can't stand?",
+        "What's a word you love the sound of?",
+        "What's a word you hate the sound of?",
+        "If you could master any musical instrument instantly, which would it be?",
+        "What's a song that makes you feel nostalgic for a time that wasn't even yours?",
+        "What's a piece of classical music that stirs something in you?",
+        "If your life was a movie, what genre would it be?",
+        "Who would direct the movie of your life?",
+        "Who would play you in the movie of your life?",
+        "What's your favorite opening scene from any film?",
+        "What's the most powerful closing line to a book or movie you've experienced?",
+        "What's a children's book that still holds meaning for you as an adult?",
+        "What's a myth or fairy tale you find yourself thinking about?",
+        "What's a monster from folklore you find fascinating?",
+        "If you could have a mythical creature as a pet, what would it be?",
+        "What's a useless supernatural power you'd want?",
+        "What's a useful supernatural power you'd want?",
+        "What's your favorite type of tree?",
+        "What's your favorite type of cloud formation?",
+        "What's the most interesting animal you've ever seen in the wild?",
+        "What's a plant you can identify by name?",
+        "What's a constellation you can point out in the night sky?",
+        "What's a natural phenomenon you'd love to witness in person?",
+        "What's a simple machine you think is brilliantly designed?",
+        "What's a building or structure you find architecturally beautiful?",
+        "What's a public space you think is perfectly designed?",
+        "What's a color you're drawn to and why?",
+        "What's a texture you can't stand to touch?",
+        "What's a fabric you love the feel of?",
+        "What's the most comfortable item of clothing you own?",
+        "What's your favorite item of clothing you've ever owned and what happened to it?",
+        "What's a style or fashion trend you regret participating in?",
+        "What's a hairstyle you had that you look back on and cringe?",
+        "What's a hairstyle you had that you look back on and love?",
+        "What's a scent you'd choose for your signature perfume or cologne?",
+        "What's a smell that reminds you of your childhood home?",
+        "What's a smell that reminds you of school?",
+        "What's a smell that reminds you of falling in love?",
+        "What's the most memorable meal you've ever eaten?",
+        "What's the worst meal you've ever been served?",
+        "What's a food you've eaten that you still dream about?",
+        "What's a regional dish from your area that everyone should try?",
+        "What's a cooking mistake you made that turned out delicious?",
+        "What's a cooking disaster you'll never forget?",
+        "What's a kitchen gadget you couldn't live without?",
+        "What's a simple recipe you've perfected?",
+        "What's a beverage you have a strong opinion about?",
+        "What's the best water you've ever tasted?",
+        "What's a cocktail or mocktail that feels like a treat?",
+        "What's a type of candy you loved as a kid that you still enjoy?",
+        "What's a type of candy you loved as a kid that now disgusts you?",
+        "What's a junk food you have a weakness for?",
+        "What's a healthy snack you genuinely enjoy?",
+        "What's a food combination you enjoy that others find weird?",
+        "What's a food combination you find disgusting that others love?",
+        "What's a restaurant you have fond memories of that no longer exists?",
+        "What's the best street food you've ever had?",
+        "What's a food you were afraid to try but ended up loving?",
+        "What's a food you will never, ever try again?",
+        "What's a board game you are extremely competitive at?",
+        "What's a card game you enjoy?",
+        "What's a game from your childhood you wish would make a comeback?",
+        "What's a puzzle you enjoyed solving?",
+        "What's a physical skill you'd like to learn (e.g., juggling, skating, whistling loudly)?",
+        "What's a party trick you can do?",
+        "What's a magic trick you know how it's done but still enjoy?",
+        "What's a joke that is so stupid it makes you laugh every time?",
+        "What's the best pun you've ever heard?",
+        "What's a funny meme that perfectly captures a feeling?",
+        "What's an internet rabbit hole you recently went down?",
+        "What's a YouTube channel you've binge-watched?",
+        "What's a podcast episode that stuck with you long after you heard it?",
+        "What's a Wikipedia article you've spent hours reading?",
+        "What's a forum or online community you were a part of in the early internet days?",
+        "What's a piece of internet slang you refuse to use?",
+        "What's a piece of internet slang you can't help but use?",
+        "What's a viral trend you happily participated in?",
+        "What's a viral trend you watched from the sidelines with confusion?",
+        "What's an app on your phone you use every day that isn't social media?",
+        "What's an app on your phone you never use but can't delete?",
+        "What's a feature you wish your phone had?",
+        "What's a piece of technology that feels like magic to you?",
+        "What's a piece of technology that feels unnecessarily complicated?",
+        "What's a manual process you enjoy more than its automated version?",
+        "What's a chore you don't mind doing?",
+        "What's a chore you absolutely despise?",
+        "What's a household item you're particular about the brand of?",
+        "What's a cleaning product you swear by?",
+        "What's a weirdly specific way you like things organized?",
+        "What's a mess you can tolerate?",
+        "What's a mess you cannot tolerate?",
+        "What's a item in your home that is purely decorative and brings you joy?",
+        "What's a view from a window in your home that you appreciate?",
+        "What's a piece of furniture you find perfectly comfortable?",
+        "What's a piece of art you have on your walls?",
+        "What's a photograph you have displayed and what's its story?",
+        "What's a book on your shelf you haven't read but intend to?",
+        "What's a book on your shelf you've read multiple times?",
+        "What's a collection you had as a child?",
+        "What's a collection you have as an adult?",
+        "What's a thing you collect unintentionally?",
+        "What's a souvenir you brought back from a trip that isn't typical?",
+        "What's a souvenir you wish you had bought?",
+        "What's a souvenir you regret buying?",
+        "What's a local attraction in your town that you've never been to?",
+        "What's a tourist trap that is actually worth it?",
+        "What's a hidden gem in your city that only locals know about?",
+        "What's the best road trip you've ever taken?",
+        "What's the worst road trip you've ever taken?",
+        "What's an essential item for any long journey?",
+        "What's a song that is mandatory for your road trip playlist?",
+        "What's a snack that is mandatory for your road trips?",
+        "What's the most interesting person you've ever sat next to on a plane or train?",
+        "What's the most beautiful stretch of road you've ever driven?",
+        "What's a mode of transportation you've always wanted to try?",
+        "What's a city you've visited that felt like it had a distinct personality?",
+        "What's a small town you visited that left a big impression?",
+        "What's a country you have no desire to visit?",
+        "What's a country you'd move to in a heartbeat?",
+        "What's a language you find beautiful to listen to, even if you don't understand it?",
+        "What's a phrase in another language you know and what does it mean?",
+        "What's a cultural custom you find beautiful?",
+        "What's a cultural custom you find confusing?",
+        "What's a holiday you wish your culture celebrated?",
+        "What's a holiday you think your culture makes too big a deal of?",
+        "What's a family recipe that has been passed down?",
+        "What's a story about an ancestor that gets told and retold?",
+        "What's a heirloom you've inherited and what's its story?",
+        "What's a piece of family history you're curious about?",
+        "What's a question you wish you had asked an older relative?",
+        "What's a piece of advice from a grandparent you'll never forget?",
+        "What's a tradition from your family of origin you've kept?",
+        "What's a tradition from your family of origin you've discarded?",
+        "What's a lesson you learned from a sibling?",
+        "What's a lesson you learned from a cousin?",
+        "What's a lesson you learned from a pet?",
+        "What was the name of your first pet?",
+        "What's the best name for a pet you've ever heard?",
+        "What's the worst name for a pet you've ever heard?",
+        "What's a breed of dog or cat you have a soft spot for?",
+        "What's an animal you find deeply misunderstood?",
+        "What's a insect you don't mind?",
+        "What's a insect you are terrified of?",
+        "What's a fear you've conquered?",
+        "What's a fear you know is irrational but can't shake?",
+        "What's a fear you have that is completely rational?",
+        "What's a risk you took that was absolutely worth it?",
+        "What's a risk you took that was a complete disaster?",
+        "What's a risk you didn't take that you regret?",
+        "What's a safe choice you're glad you made?",
+        "What's a time you followed your gut and it paid off?",
+        "What's a time you followed your gut and it was wrong?",
+        "What's a decision you made based purely on logic?",
+        "What's a decision you made based purely on emotion?",
+        "What's a paradox you find intriguing?",
+        "What's a philosophical thought experiment you enjoy pondering?",
+        "What's a \"what if\" scenario you think about often?",
+        "If you could know the absolute truth about one historical event, what would it be?",
+        "If you could know the absolute truth about one mystery, what would it be?",
+        "If you could ask one person from history one question and get a truthful answer, who and what would you ask?",
+        "What's a historical figure you think gets a bad rap?",
+        "What's a historical figure you think is overrated?",
+        "What's a period in history you think would have been fascinating to live through?",
+        "What's a period in history you are grateful you did not live through?",
+        "What's a scientific concept you struggle to understand but find amazing?",
+        "What's a scientific fact that seems like science fiction?",
+        "What's a space fact that blows your mind?",
+        "What's a deep sea creature you find fascinating?",
+        "What's an element on the periodic table you find interesting and why?",
+        "What's a invention you believe will happen in the next 50 years?",
+        "What's a invention you hope will happen in the next 50 years?",
+        "What's a invention you hope never happens?",
+        "What's a futuristic technology from a movie you wish existed?",
+        "What's a dystopian future from a movie you hope never happens?",
+        "What's a utopian future from a movie you'd want to live in?",
+        "Who is a fictional character you relate to on a deep level?",
+        "Who is a fictional character you would want as a best friend?",
+        "Who is a fictional character you would want as a nemesis?",
+        "What's a fictional place you wish you could visit?",
+        "What's a fictional item you wish you owned?",
+        "What's a superpower that would be terrible to have in real life?",
+        "What's a villain you sympathize with?",
+        "What's a hero you think is actually a villain?",
+        "What's a plot twist that genuinely shocked you?",
+        "What's a movie ending you found perfectly satisfying?",
+        "What's a movie ending you found deeply unsatisfying?",
+        "What's a book with a ending that stayed with you for days?",
+        "What's a piece of poetry that resonates with you?",
+        "What's a line from a poem you have memorized?",
+        "What's a quote from a speech that gives you chills?",
+        "What's a piece of advice you read in a self-help book that actually worked?",
+        "What's a piece of advice you read in a self-help book that was terrible?",
+        "What's a productivity \"hack\" that works for you?",
+        "What's a productivity \"hack\" that is useless for you?",
+        "What's a way you procrastinate?",
+        "What's a task you always do immediately to get it out of the way?",
+        "What's a boring adult task you've learned to enjoy?",
+        "What's a bill you hate paying?",
+        "What's a subscription service you find completely worth the money?",
+        "What's a subscription service you canceled and didn't miss?",
+        "What's a brand you are loyal to and why?",
+        "What's a brand you will never buy from again and why?",
+        "What's a product you bought because of an advertisement that was actually good?",
+        "What's a product you bought because of an advertisement that was terrible?",
+        "What's a piece of marketing you found genuinely clever?",
+        "What's a piece of marketing you found deeply annoying?",
+        "What's a jingle from a commercial you still remember?",
+        "What's a local business you make a point to support?",
+        "What's a chain restaurant you unironically love?",
+        "What's a fast food item you have a strong opinion on?",
+        "What's a discontinued product you miss?",
+        "What's a new product you think is a game-changer?",
+        "What's a piece of clothing you've owned for over a decade?",
+        "What's a pair of shoes you've worn into the ground?",
+        "What's an item you lost that you still think about?",
+        "What's an item you found that you kept?",
+        "What's the best deal you've ever gotten on something?",
+        "What's the biggest waste of money you've ever experienced?",
+        "What's something you splurged on that you have zero regrets about?",
+        "What's something you cheaped out on that you immediately regretted?",
+        "What's a skill you learned from YouTube?",
+        "What's a skill you learned from a book?",
+        "What's a skill you learned by failing repeatedly?",
+        "What's a skill you wish you had been taught in school?",
+        "What's a skill you think is becoming obsolete?",
+        "What's a skill you think will be essential in the future?",
+        "What's a problem you're good at solving?",
+        "What's a problem you're terrible at solving?",
+        "What's a type of puzzle you excel at?",
+        "What's a type of puzzle you are hopeless at?",
+        "What's a riddle you know the answer to?",
+        "What's a riddle you've never been able to solve?",
+        "What's a game of chance you enjoy?",
+        "What's a game of strategy you enjoy?",
+        "What's a sport you think is much harder than it looks?",
+        "What's a sport you think is easier than it looks?",
+        "What's a rule in a sport you think should be changed?",
+        "What's a athlete's story you find inspiring?",
+        "What's a moment in sports history you remember vividly?",
+        "What's a workout you actually enjoy doing?",
+        "What's a form of exercise you hate?",
+        "What's a healthy habit you've stuck with?",
+        "What's a unhealthy habit you can't seem to quit?",
+        "What's a part of your body you've learned to appreciate?",
+        "What's a minor ache or pain you've just learned to live with?",
+        "What's a strange dream you still remember?",
+        "What's a recurring dream or nightmare you have?",
+        "What's a dream you had that felt significant or prophetic?",
+        "What's a deja vu experience you've had?",
+        "What's a coincidence that felt too strange to be random?",
+        "What's a \"sliding doors\" moment in your life? (A small decision that changed everything)",
+        "What's a person you met randomly who had a big impact on you?",
+        "What's a piece of unsolicited advice from a stranger that was actually good?",
+        "What's a kindness you received from a stranger?",
+        "What's a time you intervened to help a stranger?",
+        "What's a time a stranger intervened to help you?",
+        "What's a small talk question you don't mind?",
+        "What's a small talk question you dread?",
+        "What's a question you wish people would ask to get to know the real you?",
+        "What's a topic you avoid in polite conversation?",
+        "What's a opinion you hold that would surprise people who know you?",
+        "What's a part of your personality you keep hidden from most people?",
+        "What's a secret talent you have that almost no one knows about?",
+        "What's a goal you're working on quietly?",
+        "What's a dream you're afraid to say out loud?",
+        "What's a piece of criticism you received that was hard to hear but helpful?",
+        "What's a compliment you received that you still think about?",
+        "What's a time you were publicly embarrassed?",
+        "What's a time you embarrassed someone else (accidentally or on purpose)?",
+        "What's a prank you played that went well?",
+        "What's a prank you played that went horribly wrong?",
+        "What's a lie you told as a child that you got away with?",
+        "What's a lie you told that was discovered immediately?",
+        "What's a white lie you tell often?",
+        "What's a truth you are always honest about, even when it's difficult?",
+        "What's a boundary you've had to enforce recently?",
+        "What's a compromise you made that you're happy with?",
+        "What's a compromise you made that you regret?",
+        "What's a hill you're willing to die on in a personal relationship?",
+        "What's a relationship deal-breaker you discovered later in life?",
+        "What's a relationship green flag you didn't appreciate when you were younger?",
+        "What's a piece of marriage advice you'd give (whether married or not)?",
+        "What's a piece of parenting advice you'd give (whether a parent or not)?",
+        "What's a lesson you learned from a failed friendship?",
+        "What's a quality you look for in a new friend?",
+        "What's a way you show your friends you care about them?",
+        "What's a friend you've lost touch with that you often think about?",
+        "What's a friend you've known since childhood that you're still close with?",
+        "What's a new friend who has recently enriched your life?",
+        "What's a piece of gossip you heard that turned out to be true?",
+        "What's a piece of gossip you heard that was completely false?",
+        "What's a rumor that was spread about you?",
+        "What's a secret you've kept for someone else?",
+        "What's a secret you've never told anyone?",
+        "What's a memory you're not sure is real or a dream?",
+        "What's a photograph you wish existed?",
+        "What's a moment in your life you wish you had on video?",
+        "What's a piece of your past you'd like to revisit as an observer?",
+        "What's a piece of your past you'd never want to relive?",
+        "What's a moment you felt truly, unshakably happy?",
+        "What's a moment you felt profoundly sad?",
+        "What's a moment you felt deeply scared?",
+        "What's a moment you felt completely at peace?",
+        "What's a moment you felt intensely proud of yourself?",
+        "What's a moment you felt intensely proud of someone else?",
+        "What's a moment you felt completely alone, even in a crowd?",
+        "What's a moment you felt deeply connected to others?",
+        "What's a moment you felt like you were exactly where you were meant to be?",
+        "What's a moment you felt like you were completely out of your depth?",
+        "What's a moment you felt like you were on top of the world?",
+        "What's a moment you felt like you hit rock bottom?",
+        "What's a moment you felt like you were living in a movie?",
+        "What's a moment you felt like you were in a dream?",];
+
+        // Function to get a file handle for saving
+        async function getFileHandle() {
+            try {
+                if (!fileHandle) {
+                    fileHandle = await window.showSaveFilePicker({
+                        suggestedName: 'ai_training_dataset.jsonl',
+                        types: [{
+                            description: 'JSON Lines File',
+                            accept: {'application/jsonl': ['.jsonl']},
+                        }],
+                    });
+                }
+                return fileHandle;
+            } catch (error) {
+                console.error('Error getting file handle:', error);
+                return null;
+            }
+        }
+
+        // Function to save responses to the file
+        async function saveToFile() {
+            const systemPrompt = "You are an AI that embodies the personality and speech patterns of the respondent. Your responses must use their specific vocabulary, slang, sentence rhythm, and mannerisms.";
+            let datasetContent = "";
+
+            for (let i = 0; i < questions.length; i++) {
+                if (answers[i]) {
+                    const chatmlEntry = `<|im_start|>system\n${systemPrompt}<|im_end|>\n<|im_start|>user\n${questions[i]}<|im_end|>\n<|im_start|>assistant\n${answers[i]}<|im_end|>`;
+                    datasetContent += JSON.stringify({text: chatmlEntry}) + '\n';
+                }
+            }
+
+            try {
+                const handle = await getFileHandle();
+                if (handle) {
+                    const writable = await handle.createWritable();
+                    await writable.write(datasetContent);
+                    await writable.close();
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                console.error('Error saving file:', error);
+                return false;
+            }
+        }
+
+        async function loadQuestions() {
+            try {
+                questions = embeddedQuestionsList;
+                questionsLoaded = true;
+                return true;
+            } catch (error) {
+                alert('Error: Could not load questions. ' + error);
+                return false;
+            }
+        }
+
+        function showNotification(message) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.classList.add('show');
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 2000);
+        }
+
+        async function startQuestionnaire() {
+            const loaded = await loadQuestions();
+            if (!loaded) return;
+
+            document.getElementById('setup-screen').classList.add('hidden');
+            document.getElementById('question-screen').classList.remove('hidden');
+            
+            const savedProgress = localStorage.getItem('datasetProgress');
+            if (savedProgress) {
+                answers = JSON.parse(savedProgress);
+            }
+            
+            showQuestion(0);
+        }
+
+        function showQuestion(index) {
+            if (index >= questions.length) {
+                showCompletionScreen();
+                return;
+            }
+
+            currentQuestionIndex = index;
+            document.getElementById('current-question').textContent = questions[index];
+            document.getElementById('answer-input').value = answers[index] || '';
+            document.getElementById('question-number').textContent = `${index + 1} of ${questions.length}`;
+            
+            const progress = ((index) / questions.length) * 100;
+            document.getElementById('progress-bar').style.width = progress + '%';
+            document.getElementById('progress-text').textContent = `Progress: ${Math.round(progress)}%`;
+            
+            const answeredCount = Object.values(answers).filter(a => a).length;
+            document.getElementById('answered-text').textContent = `Answered: ${answeredCount}`;
+            
+            document.getElementById('answer-input').focus();
+        }
+
+        async function saveAnswer() {
+            const answer = document.getElementById('answer-input').value.trim();
+            if (answer) {
+                answers[currentQuestionIndex] = answer;
+                localStorage.setItem('datasetProgress', JSON.stringify(answers));
+                
+                const saved = await saveToFile();
+                if (saved) {
+                    showNotification('Answer saved and file updated!');
+                } else {
+                    showNotification('Answer saved locally!');
+                }
+            }
+            nextQuestion();
+        }
+
+        function skipQuestion() {
+            nextQuestion();
+        }
+
+        function nextQuestion() {
+            showQuestion(currentQuestionIndex + 1);
+        }
+
+        function showCompletionScreen() {
+            document.getElementById('question-screen').classList.add('hidden');
+            document.getElementById('completed-screen').classList.remove('hidden');
+        }
+
+        function editAnswers() {
+            document.getElementById('completed-screen').classList.add('hidden');
+            document.getElementById('question-screen').classList.remove('hidden');
+            showQuestion(0);
+        }
+
+        async function downloadDataset() {
+            const saved = await saveToFile();
+            if (saved) {
+                showNotification('Dataset file updated!');
+            } else {
+                // Fallback method
+                const systemPrompt = "You are an AI that embodies the personality and speech patterns of the respondent. Your responses must use their specific vocabulary, slang, sentence rhythm, and mannerisms.";
+                let datasetContent = "";
+
+                for (let i = 0; i < questions.length; i++) {
+                    if (answers[i]) {
+                        const chatmlEntry = `<|im_start|>system\n${systemPrompt}<|im_end|>\n<|im_start|>user\n${questions[i]}<|im_end|>\n<|im_start|>assistant\n${answers[i]}<|im_end|>`;
+                        datasetContent += JSON.stringify({text: chatmlEntry}) + '\n';
+                    }
+                }
+
+                const blob = new Blob([datasetContent], { type: 'application/jsonl' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'ai_training_dataset.jsonl';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                showNotification('Dataset downloaded!');
+            }
+        }
+
+        // Initialize
+        document.getElementById('answer-input').addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                saveAnswer();
+            }
+        });
+    </script>
+</body>
+</html>
